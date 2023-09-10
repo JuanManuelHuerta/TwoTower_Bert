@@ -60,6 +60,37 @@ class SiameseNetworkDataset(Dataset):
         }
 
 
+def validation():
+    model.eval()
+    fin_targets=[]
+    fin_outputs=[]
+    with torch.no_grad():
+        for _, data in enumerate(testing_loader, 0):
+            ids,mask,token_type_ids = data['ids'],data['mask'],data['token_type_ids'] 
+            targets = data['targets'].to(device, dtype = torch.float)
+            ids = [ids[0].to(device, dtype = torch.long),ids[1].to(device, dtype = torch.long)]
+            mask = [mask[0].to(device, dtype = torch.long),mask[1].to(device, dtype = torch.long)]
+            token_type_ids = [token_type_ids[0].to(device, dtype = torch.long),token_type_ids[1].to(device, dtype = torch.long)]
+            targets = data['targets'].to(device, dtype = torch.float)
+            output1,output2 = model(ids, mask, token_type_ids)
+            cos_sim = F.cosine_similarity(output1, output2)
+            fin_targets.extend(targets.cpu().detach().numpy().tolist())
+            fin_outputs.extend(torch.sigmoid(cos_sim).cpu().detach().numpy().tolist())
+    return fin_outputs, fin_targets
+
+def run_validation():
+    outputs, targets = validation()
+    outputs = np.array(outputs) >= 0.5
+    accuracy = metrics.accuracy_score(targets, outputs)
+    f1_score_micro = metrics.f1_score(targets, outputs, average='micro')
+    f1_score_macro = metrics.f1_score(targets, outputs, average='macro')
+
+    print(f"Accuracy Score = {accuracy}")
+    print(f"F1 Score (Micro) = {f1_score_micro}")
+    print(f"F1 Score (Macro) = {f1_score_macro}")
+
+    return accuracy, f1_score_micro, f1_score_macro
+
 
 
 class TwinBert(nn.Module):
@@ -86,8 +117,18 @@ LEARNING_RATE = 1e-05
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 
+run = wandb.init(
+    # Set the project where this run will be logged
+    project="Two Tower Bert",
+    # Track hyperparameters and run metadata
+    config={
+        "learning_rate": LEARNING_RATE,
+        "epochs": EPOCHS,
+    })
 
-train_size = 0.8
+
+
+train_size = 0.98
 train_dataset=df.sample(frac=train_size,random_state=200).reset_index(drop=True)
 test_dataset=df.drop(train_dataset.index).reset_index(drop=True)
 
@@ -127,7 +168,7 @@ class CosineContrastiveLoss(nn.Module):
 
 criterion = CosineContrastiveLoss()
 #optimizer = optim.Adam(model.parameters(),lr = 0.0005 )
-optimizer = optim.AdamW(model.parameters(),lr = 0.0001 )
+optimizer = optim.Adam(model.parameters(),lr = 0.0005 )
 
 def train(epoch):
     model.train()
@@ -140,10 +181,14 @@ def train(epoch):
         output1,output2 = model(ids, mask, token_type_ids)
         optimizer.zero_grad()
         loss = criterion(output1,output2,targets)
-
-        if _%50==0:
+        if _%100==0 and  _>0:
+            accuracy,f1_micro, f1_macro = run_validation()
             print(f'Step: {_}, Epoch: {epoch}, Loss:  {loss.item()}')
-        
+            wandb.log({"loss":loss.item(), "epoch":epoch, "accuracy":accuracy, "f1_micro":f1_micro, "f1_macro":f1_macro})
+
+        else:
+            wandb.log({"loss":loss.item(), "epoch":epoch})
+            
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -153,34 +198,5 @@ for epoch in range(EPOCHS):
 
 
 
-
-
-def validation():
-    model.eval()
-    fin_targets=[]
-    fin_outputs=[]
-    with torch.no_grad():
-        for _, data in enumerate(testing_loader, 0):
-            ids,mask,token_type_ids = data['ids'],data['mask'],data['token_type_ids'] 
-            targets = data['targets'].to(device, dtype = torch.float)
-            ids = [ids[0].to(device, dtype = torch.long),ids[1].to(device, dtype = torch.long)]
-            mask = [mask[0].to(device, dtype = torch.long),mask[1].to(device, dtype = torch.long)]
-            token_type_ids = [token_type_ids[0].to(device, dtype = torch.long),token_type_ids[1].to(device, dtype = torch.long)]
-            targets = data['targets'].to(device, dtype = torch.float)
-            output1,output2 = model(ids, mask, token_type_ids)
-            cos_sim = F.cosine_similarity(output1, output2)
-            in_targets.extend(targets.cpu().detach().numpy().tolist())
-            fin_outputs.extend(torch.sigmoid(cos_sim).cpu().detach().numpy().tolist())
-    return fin_outputs, fin_targets
-
-outputs, targets = validation()
-outputs = np.array(outputs) >= 0.5
-accuracy = metrics.accuracy_score(targets, outputs)
-f1_score_micro = metrics.f1_score(targets, outputs, average='micro')
-f1_score_macro = metrics.f1_score(targets, outputs, average='macro')
-
-print(f"Accuracy Score = {accuracy}")
-print(f"F1 Score (Micro) = {f1_score_micro}")
-print(f"F1 Score (Macro) = {f1_score_macro}")
 
 
