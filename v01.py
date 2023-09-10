@@ -1,3 +1,4 @@
+import wandb
 import numpy as np
 import pandas as pd
 from sklearn import metrics
@@ -11,6 +12,9 @@ import torch.nn.functional as F
 
 from torch import cuda
 device = 'cuda' if cuda.is_available() else 'cpu'
+
+wandb.login()
+
 
 
 class SiameseNetworkDataset(Dataset):

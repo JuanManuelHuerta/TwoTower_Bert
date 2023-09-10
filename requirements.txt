@@ -1,0 +1,7 @@
+wandb
+numpy
+pandas
+sklearn
+scikit-learn
+transformers
+torch

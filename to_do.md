@@ -3,9 +3,9 @@ Things to do:
 
 
 * Make it a script and runs
+* Connect to weights and biases
 
 * Pull data from huggingface transformers
-* Connect to weights and biases
 * Multi_gpu accomodations
 * Save checkpoints
 * Use different optimizer
